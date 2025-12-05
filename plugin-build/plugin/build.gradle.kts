@@ -11,7 +11,8 @@ dependencies {
   implementation(gradleApi())
   implementation(libs.docker.java.core)
   implementation(libs.docker.java.transport.httpclient5)
-
+  implementation(libs.apache.common.lang3)
+  implementation("tools.jackson.core:jackson-core:3.0.3")
   testImplementation(libs.junit)
 }
 
@@ -26,23 +27,28 @@ kotlin {
   }
 }
 
+val pluginId = "com.daiyuang.kotlin.gradle.docker.plugin"
+val pluginImplementationClass = "com.daiyuang.kotlin.gradle.docker.plugin.DockerPlugin"
+val pluginVersion = "0.0.1"
+val pluginDescription = "A Gradle plugin to build, run and push Docker images using docker-java"
+val pluginDisplayName = "Gradle Docker Plugin"
 gradlePlugin {
   plugins {
-    create(property("ID").toString()) {
-      id = property("ID").toString()
-      implementationClass = property("IMPLEMENTATION_CLASS").toString()
-      version = property("VERSION").toString()
-      description = property("DESCRIPTION").toString()
-      displayName = property("DISPLAY_NAME").toString()
-      // Note: tags cannot include "plugin" or "gradle" when publishing
-      tags.set(listOf("sample", "template"))
+    create(pluginId) {
+      id = pluginId
+      implementationClass = pluginImplementationClass
+      version = pluginVersion
+      description = pluginDescription
+      displayName = pluginDisplayName
+      tags.set(listOf("docker", "gradle"))
     }
   }
 }
 
+val githubUrl = "https://github.com/DaiYuANg/gradle-docker-plugin"
 gradlePlugin {
-  website.set(property("WEBSITE").toString())
-  vcsUrl.set(property("VCS_URL").toString())
+  website.set(githubUrl)
+  vcsUrl.set(githubUrl)
 }
 
 // Use Detekt with type resolution for check
@@ -54,7 +60,7 @@ tasks.named("check").configure {
   )
 }
 
-tasks.create("setupPluginUploadFromEnvironment") {
+tasks.register("setupPluginUploadFromEnvironment") {
   doLast {
     val key = System.getenv("GRADLE_PUBLISH_KEY")
     val secret = System.getenv("GRADLE_PUBLISH_SECRET")

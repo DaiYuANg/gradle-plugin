@@ -1,39 +1,27 @@
 package com.daiyuang.kotlin.gradle.docker.plugin
 
+import com.github.dockerjava.core.DefaultDockerClientConfig
+import com.github.dockerjava.core.DockerClientConfig
 import org.gradle.api.Project
-import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import javax.inject.Inject
 
-const val DEFAULT_OUTPUT_FILE = "template-example.txt"
+abstract class DockerExtension @Inject constructor(project: Project) {
 
-@Suppress("UnnecessaryAbstractClass")
-abstract class DockerExtension
-  @Inject
-  constructor(
-    project: Project,
-  ) {
-    private val objects = project.objects
-
-    val host: Property<String> =
-      objects
-        .property(String::class.java)
-        .convention("unix:///var/run/docker.sock")
-    val apiVersion: Property<String> =
-      objects
-        .property(String::class.java)
-        .convention("1.43")
-
-    // Example of a property that is mandatory. The task will
-    // fail if this property is not set as is annotated with @Optional.
-    val message: Property<String> = objects.property(String::class.java)
-
-    // Example of a property that is optional.
-    val tag: Property<String> = objects.property(String::class.java)
-
-    // Example of a property with a default set with .convention
-    val outputFile: RegularFileProperty =
-      objects.fileProperty().convention(
-        project.layout.buildDirectory.file(DEFAULT_OUTPUT_FILE),
-      )
+  companion object{
+    const val EXTENSION_NAME = "dockerConfig"
   }
+
+  private val objects = project.objects
+
+  val dockerHost: Property<String> = objects.property(String::class.java)
+  val apiVersion: Property<String> = objects.property(String::class.java)
+
+  val dockerTlsVerify: Property<Boolean> = objects.property(Boolean::class.java)
+  val dockerCertPath: Property<String> = objects.property(String::class.java)
+
+  val registryUrl: Property<String> = objects.property(String::class.java)
+  val registryUsername: Property<String> = objects.property(String::class.java)
+  val registryPassword: Property<String> = objects.property(String::class.java)
+  val registryEmail: Property<String> = objects.property(String::class.java)
+}
