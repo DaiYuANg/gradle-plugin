@@ -12,6 +12,17 @@ plugins {
   alias(libs.plugins.manifest)
 }
 
+allprojects {
+  group = "com.daiyuang"
+  version = "0.0.2"
+  repositories {
+    mavenLocal()
+    mavenCentral()
+    google()
+    gradlePluginPortal()
+  }
+}
+
 subprojects {
   apply {
     plugin(
