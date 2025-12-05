@@ -1,36 +1,36 @@
 pluginManagement {
-    repositories {
-        gradlePluginPortal()
-        mavenCentral()
-    }
+  repositories {
+    gradlePluginPortal()
+    mavenCentral()
+  }
 }
 
 dependencyResolutionManagement {
-    repositories {
-        google()
-        mavenCentral()
-    }
+  repositories {
+    google()
+    mavenCentral()
+  }
 
-    versionCatalogs {
-        create("libs") {
-            from(files("../gradle/libs.versions.toml"))
-        }
+  versionCatalogs {
+    create("libs") {
+      from(files("../gradle/libs.versions.toml"))
     }
+  }
 }
 
 plugins {
-    id("com.gradle.develocity") version "4.2.2"
+  id("com.gradle.develocity") version "4.2.2"
 }
 
 develocity {
-    buildScan.termsOfUseUrl = "https://gradle.com/terms-of-service"
-    buildScan.termsOfUseAgree = "yes"
-    buildScan.publishing.onlyIf {
-        System.getenv("GITHUB_ACTIONS") == "true" &&
-            it.buildResult.failures.isNotEmpty()
-    }
+  buildScan.termsOfUseUrl = "https://gradle.com/terms-of-service"
+  buildScan.termsOfUseAgree = "yes"
+  buildScan.publishing.onlyIf {
+    System.getenv("GITHUB_ACTIONS") == "true" &&
+      it.buildResult.failures.isNotEmpty()
+  }
 }
 
-rootProject.name = ("com.daiyuang.kotlin.gradle.docker.plugin")
+rootProject.name = ("com.daiyuang.gradle.plugin")
 
-include(":plugin")
+include(":docker-plugin")

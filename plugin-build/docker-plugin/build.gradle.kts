@@ -13,6 +13,7 @@ dependencies {
   implementation(libs.docker.java.transport.httpclient5)
   implementation(libs.apache.common.lang3)
   implementation(libs.jackson.core)
+  implementation(libs.freemarker)
   testImplementation(libs.junit)
 }
 

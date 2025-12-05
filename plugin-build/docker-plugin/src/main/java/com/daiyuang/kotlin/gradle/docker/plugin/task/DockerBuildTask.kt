@@ -1,9 +1,14 @@
 package com.daiyuang.kotlin.gradle.docker.plugin.task
 
+import com.daiyuang.kotlin.gradle.docker.plugin.dsl.DockerfileBuilder
+import com.daiyuang.kotlin.gradle.docker.plugin.dsl.dockerfile
 import com.daiyuang.kotlin.gradle.docker.plugin.func.toPrettyJson
 import com.daiyuang.kotlin.gradle.docker.plugin.service.DockerService
 import com.daiyuang.kotlin.gradle.docker.plugin.service.DockerService.Companion.SERVICE_NAME
 import com.github.dockerjava.api.model.AuthConfigurations
+import freemarker.template.Configuration
+import freemarker.template.Template
+import freemarker.template.TemplateExceptionHandler
 import org.apache.commons.lang3.SystemUtils
 import org.gradle.api.DefaultTask
 import org.gradle.api.provider.ListProperty
@@ -15,6 +20,10 @@ import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.options.Option
 import java.io.File
+import java.io.StringReader
+import java.io.StringWriter
+import java.net.URI
+import java.nio.file.Files
 
 abstract class DockerBuildTask : DefaultTask() {
 
@@ -37,6 +46,7 @@ abstract class DockerBuildTask : DefaultTask() {
     cacheFrom.convention(listOf())
     printInspectAfterBuild.convention(false)
     authConfigs.convention(AuthConfigurations())
+    templateVars.convention(mapOf())
   }
 
   @get:ServiceReference(SERVICE_NAME)
@@ -122,7 +132,6 @@ abstract class DockerBuildTask : DefaultTask() {
   @get:Optional
   abstract val printInspectAfterBuild: Property<Boolean>
 
-
   // -------------------------
   // Auth
   // -------------------------
@@ -130,6 +139,25 @@ abstract class DockerBuildTask : DefaultTask() {
   @get:Input
   @get:Optional
   abstract val authConfigs: Property<AuthConfigurations>
+
+  // -------------------------
+  // Dockerfile DSL
+  // -------------------------
+  @get:Input
+  @get:Optional
+  abstract val dockerfileDsl: Property<DockerfileBuilder.() -> Unit>
+
+  // -------------------------
+  // Remote Dockerfile Template
+  // -------------------------
+  @get:Input
+  @get:Optional
+  abstract val remoteDockerfileTemplate: Property<String> // URL 或本地路径
+
+  @get:Input
+  @get:Optional
+  abstract val templateVars: MapProperty<String, Any>
+
   // -------------------------
   // Build Logic
   // -------------------------
@@ -141,7 +169,45 @@ abstract class DockerBuildTask : DefaultTask() {
     val client = dockerService.get().client()
 
     val contextDir = File(buildContext.get())
-    val dockerfilePath = File(dockerfile.get())
+    // -------------------------
+    // Dockerfile 处理
+    // -------------------------
+    val dockerfilePath: File = when {
+      dockerfileDsl.orNull != null -> {
+        val tmp = Files.createTempFile("Dockerfile-", ".tmp").toFile()
+        val content = dockerfile { dockerfileDsl.get().invoke(this) }.build()
+        tmp.writeText(content)
+        logger.lifecycle("Generated Dockerfile (DSL):\n$content")
+        tmp
+      }
+
+      remoteDockerfileTemplate.orNull != null -> {
+        val tmp = File(project.layout.buildDirectory.asFile.get(), "docker/Dockerfile-remote.tmp")
+        tmp.parentFile.mkdirs()
+        val templateContent = if (remoteDockerfileTemplate.get().startsWith("http")) {
+          URI(remoteDockerfileTemplate.get()).toURL().readText()
+        } else {
+          File(remoteDockerfileTemplate.get()).readText()
+        }
+
+        val cfg = Configuration(Configuration.VERSION_2_3_31).apply {
+          defaultEncoding = "UTF-8"
+          templateExceptionHandler = TemplateExceptionHandler.RETHROW_HANDLER
+          logTemplateExceptions = false
+          wrapUncheckedExceptions = true
+        }
+
+        val template = Template("dockerfile", StringReader(templateContent), cfg)
+        val writer = StringWriter()
+        template.process(templateVars.get(), writer)
+        tmp.writeText(writer.toString())
+        logger.lifecycle("Generated Dockerfile (Freemarker):\n${writer}")
+        tmp
+      }
+
+      else -> File(dockerfile.get())
+    }
+
 
     val allTags = resolveTags()
 
