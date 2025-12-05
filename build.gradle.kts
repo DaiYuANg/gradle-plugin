@@ -13,8 +13,6 @@ plugins {
 }
 
 allprojects {
-  group = "com.daiyuang"
-  version = "0.0.2"
   repositories {
     mavenLocal()
     mavenCentral()
