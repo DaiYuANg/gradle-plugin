@@ -28,8 +28,8 @@ kotlin {
   }
 }
 
-val pluginId = "com.daiyuang.gradle.docker.plugin"
-val pluginImplementationClass = "com.daiyuang.gradle.docker.plugin.DockerPlugin"
+val pluginId = "io.github.daiyuang.docker.plugin"
+val pluginImplementationClass = "io.github.daiyuang.docker.plugin.DockerPlugin"
 val pluginVersion = version.toString()
 val pluginDescription = "A Gradle plugin to build, run and push Docker images using docker-java"
 val pluginDisplayName = "Gradle Docker Plugin"

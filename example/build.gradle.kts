@@ -1,7 +1,7 @@
 plugins {
   java
-  id("com.daiyuang.gradle.docker.plugin")
-  id("com.daiyuang.gradle.git.plugin")
+  id("io.github.daiyuang.docker.plugin")
+  id("io.github.daiyuang.git.plugin")
 }
 
 tasks.dockerBuild {

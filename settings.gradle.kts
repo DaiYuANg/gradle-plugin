@@ -25,7 +25,7 @@ develocity {
   }
 }
 
-rootProject.name = "gradle-gradle-plugin"
+rootProject.name = "gradle-plugin"
 
 include(":example")
 includeBuild("plugin-build")
