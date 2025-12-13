@@ -40,26 +40,19 @@ abstract class DockerPushTask : DefaultTask() {
   fun pushImages() {
     val docker = dockerService.get()
     val client = docker.client()
-    val auth = docker.authConfig()
+    val auth = docker.requireAuthConfig()
 
     val imageName = image.orNull
       ?: throw IllegalArgumentException("image must be provided")
 
     val tagList = resolveTags(imageName)
 
-    // 强制防呆：registry image 但没有 auth
-    if (imageName.contains("/") && auth == null) {
-      throw IllegalStateException(
-        "Registry image detected but no authConfig provided. Push will fail silently."
-      )
-    }
-
     tagList.forEach { fullTag ->
       logger.lifecycle("Pushing image $fullTag ...")
 
       client.pushImageCmd(fullTag)
         .apply {
-          auth?.let { withAuthConfig(it) }
+          withAuthConfig(auth)
         }
         .exec(object : ResultCallback.Adapter<PushResponseItem>() {
           override fun onNext(item: PushResponseItem?) {

@@ -10,19 +10,19 @@ const val DOCKER_TASK_GROUP = "docker"
 
 val TASK_DEFS = listOf(
   TaskDef(
-    DockerInfoTask.Companion.TASK_NAME,
+    DockerInfoTask.TASK_NAME,
     DockerInfoTask::class.java
   ),
   TaskDef(
-    DockerPushTask.Companion.TASK_NAME,
+    DockerPushTask.TASK_NAME,
     DockerPushTask::class.java
   ),
   TaskDef(
-    DockerRunTask.Companion.TASK_NAME,
+    DockerRunTask.TASK_NAME,
     DockerRunTask::class.java
   ),
   TaskDef(
-    DockerBuildTask.Companion.TASK_NAME,
+    DockerBuildTask.TASK_NAME,
     DockerBuildTask::class.java
   )
 )

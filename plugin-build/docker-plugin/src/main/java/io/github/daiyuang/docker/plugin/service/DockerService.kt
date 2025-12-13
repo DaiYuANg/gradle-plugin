@@ -29,13 +29,22 @@ abstract class DockerService :
   /**
    * 显式暴露 registry auth（给 push / pull 使用）
    */
-  fun authConfig(): AuthConfig? {
-    val url = parameters.registryUrl.orNull ?: return null
-    val username = parameters.registryUsername.orNull ?: return null
-    val password = parameters.registryPassword.orNull ?: return null
+  fun requireAuthConfig(): AuthConfig {
+    val registry = parameters.registryUrl.orNull
+      ?: error("dockerConfig.registryUrl must be set")
+
+    val username = parameters.registryUsername.orNull
+      ?: error("dockerConfig.registryUsername must be set")
+
+    val password = parameters.registryPassword.orNull
+      ?: error("dockerConfig.registryPassword must be set")
+
+    val registryAddress =
+      if (registry.startsWith("http")) registry
+      else "https://$registry"
 
     return AuthConfig()
-      .withRegistryAddress(url)
+      .withRegistryAddress(registryAddress)
       .withUsername(username)
       .withPassword(password)
   }

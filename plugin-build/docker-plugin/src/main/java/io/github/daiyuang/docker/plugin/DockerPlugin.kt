@@ -15,7 +15,7 @@ abstract class DockerPlugin : Plugin<Project> {
         run {
           spec.parameters.host.set(ext.dockerHost)
           spec.parameters.apiVersion.set(ext.apiVersion)
-          spec.parameters.registryUrl.set(ext.registryUrl)
+          spec.parameters.registryUrl.set(ext.registryUrl.orNull)
           spec.parameters.registryUsername.set(ext.registryUsername)
           spec.parameters.registryPassword.set(ext.registryPassword)
           spec.parameters.registryEmail.set(ext.registryEmail)
