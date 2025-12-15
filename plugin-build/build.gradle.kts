@@ -11,7 +11,7 @@ plugins {
 
 allprojects {
   group = "io.github.daiyuang"
-  version = "0.1.0"
+  version = "0.1.1"
 
   apply {
     plugin(

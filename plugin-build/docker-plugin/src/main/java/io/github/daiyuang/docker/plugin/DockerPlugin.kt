@@ -9,7 +9,7 @@ abstract class DockerPlugin : Plugin<Project> {
   override fun apply(project: Project) {
     val ext = project.extensions.create(DockerExtension.EXTENSION_NAME, DockerExtension::class.java, project)
     project.gradle.sharedServices.registerIfAbsent(
-      DockerService.SERVICE_NAME,
+      "${DockerService.SERVICE_NAME}-${project.name}",
       DockerService::class.java,
       { spec ->
         run {
