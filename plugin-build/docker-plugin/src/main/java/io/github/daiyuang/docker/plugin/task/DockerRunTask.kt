@@ -10,9 +10,15 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.options.Option
+import org.gradle.internal.logging.text.StyledTextOutputFactory
+import org.gradle.internal.logging.text.StyledTextOutput
 import java.util.*
+import javax.inject.Inject
 
-abstract class DockerRunTask : DefaultTask() {
+abstract class DockerRunTask
+@Inject constructor(
+  private val outputFactory: StyledTextOutputFactory
+) : DefaultTask() {
 
   companion object {
     const val TASK_NAME = "dockerRun"
@@ -33,10 +39,6 @@ abstract class DockerRunTask : DefaultTask() {
     network.convention("bridge")
     pullIfMissing.convention(true)
   }
-
-  // -------------------------
-  // Basic
-  // -------------------------
 
   @get:Input
   @get:Option(option = "image", description = "Docker image to run")
@@ -62,27 +64,15 @@ abstract class DockerRunTask : DefaultTask() {
   @get:Option(option = "workdir", description = "Working directory inside container")
   abstract val workdir: Property<String>
 
-  // -------------------------
-  // Environment Variables
-  // -------------------------
-
   @get:Input
   @get:Optional
   @get:Option(option = "env", description = "Environment variable key=value (repeatable)")
   abstract val env: MapProperty<String, String>
 
-  // -------------------------
-  // Ports: 8080:80 or 127.0.0.1:8080:80
-  // -------------------------
-
   @get:Input
   @get:Optional
   @get:Option(option = "port", description = "Port mapping: HOST:CONTAINER or HOST_IP:HOST:CONTAINER")
   abstract val ports: ListProperty<String>
-
-  // -------------------------
-  // Volumes / Binds
-  // -------------------------
 
   @get:Input
   @get:Optional
@@ -94,36 +84,20 @@ abstract class DockerRunTask : DefaultTask() {
   @get:Option(option = "bind", description = "Bind mount: host:container[:ro|rw]")
   abstract val binds: ListProperty<String>
 
-  // -------------------------
-  // Labels
-  // -------------------------
-
   @get:Input
   @get:Optional
   @get:Option(option = "label", description = "Container label: key=value")
   abstract val labels: MapProperty<String, String>
-
-  // -------------------------
-  // Network
-  // -------------------------
 
   @get:Input
   @get:Optional
   @get:Option(option = "network", description = "Network name")
   abstract val network: Property<String>
 
-  // -------------------------
-  // Restart Policy
-  // -------------------------
-
   @get:Input
   @get:Optional
   @get:Option(option = "restart", description = "Restart policy: no, on-failure, always, unless-stopped")
   abstract val restart: Property<String>
-
-  // -------------------------
-  // Commands
-  // -------------------------
 
   @get:Input
   @get:Optional
@@ -135,15 +109,14 @@ abstract class DockerRunTask : DefaultTask() {
   @get:Option(option = "pullIfMissing", description = "Automatically pull image if missing")
   abstract val pullIfMissing: Property<Boolean>
 
-  // -------------------------
-  // Main action
-  // -------------------------
-
   @TaskAction
   fun runAction() {
-    logger.lifecycle("Starting docker run...")
     val dockerConfig = project.extensions.getByType(DockerExtension::class.java)
-    // 构建 DockerRunCommand 对象
+
+    val styledOut: StyledTextOutput = outputFactory.create("docker-run")
+    styledOut.withStyle(StyledTextOutput.Style.Identifier)
+      .println("▶️ Running Docker container: ${image.get()}")
+
     val dockerCommand = DockerRunCommand(
       logger = logger,
       image = image.get(),
@@ -152,13 +125,24 @@ abstract class DockerRunTask : DefaultTask() {
       detach = detach.orNull ?: false,
       volumes = volumes.orNull ?: emptyList(),
       ports = ports.orNull ?: emptyList(),
-      extraArgs = emptyList() // 如果你有额外参数可以填
-    )
-      .also {
-        it.dockerPath = dockerConfig.dockerPath.get()
-      }
+      env = env.orNull ?: emptyMap(),
+      extraArgs = emptyList() // 如果你有额外参数可以传入
+    ).also {
+      it.dockerPath = dockerConfig.dockerPath.get()
+    }
 
-    // 执行
-    dockerCommand.execute()
+    // 执行命令并获取输出
+    val output = dockerCommand.execute()
+    output.forEach { line ->
+      val style = when {
+        line.contains("error", ignoreCase = true) -> StyledTextOutput.Style.Failure
+        line.contains("WARNING", ignoreCase = true) -> StyledTextOutput.Style.Info
+        else -> StyledTextOutput.Style.Normal
+      }
+      styledOut.withStyle(style).println(line)
+    }
+
+    styledOut.withStyle(StyledTextOutput.Style.Success)
+      .println("✅ Docker container ${containerName.orNull ?: "anonymous"} started successfully!")
   }
 }

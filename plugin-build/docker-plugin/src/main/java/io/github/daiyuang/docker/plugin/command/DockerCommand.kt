@@ -1,6 +1,8 @@
 package io.github.daiyuang.docker.plugin.command
 
 import org.gradle.api.logging.Logger
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 abstract class DockerCommand(protected val logger: Logger) {
 
@@ -9,21 +11,30 @@ abstract class DockerCommand(protected val logger: Logger) {
 
   abstract fun buildArgs(): List<String>
 
-  open fun execute() {
+  open fun execute(): List<String> {
     val args = listOf(dockerPath) + buildArgs().drop(1)
-    logger.lifecycle("Executing: ${args.joinToString(" ")}")
+
+    // 统一打印执行命令
+    logger.lifecycle("🔹 Executing command: ${args.joinToString(" ")}")
 
     val process = ProcessBuilder(args)
       .redirectErrorStream(true)
       .start()
 
-    process.inputStream.bufferedReader().useLines { lines ->
-      lines.forEach { logger.lifecycle(it) }
+    // 逐行读取输出
+    val output = mutableListOf<String>()
+    BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
+      var line: String?
+      while (reader.readLine().also { line = it } != null) {
+        output += line!!
+      }
     }
 
     val exitCode = process.waitFor()
     if (exitCode != 0) {
       throw RuntimeException("Docker command failed with exit code $exitCode")
     }
+
+    return output
   }
 }

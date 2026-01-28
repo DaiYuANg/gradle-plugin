@@ -12,8 +12,14 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.options.Option
+import org.gradle.internal.logging.text.StyledTextOutputFactory
+import org.gradle.internal.logging.text.StyledTextOutput
+import javax.inject.Inject
 
-abstract class DockerBuildTask : DefaultTask() {
+abstract class DockerBuildTask
+@Inject constructor(
+  private val outputFactory: StyledTextOutputFactory
+) : DefaultTask() {
 
   companion object {
     const val TASK_NAME = "dockerBuild"
@@ -23,7 +29,6 @@ abstract class DockerBuildTask : DefaultTask() {
   init {
     description = "Build Docker images using docker-java"
 
-    // Default values
     buildContext.convention(project.layout.projectDirectory.asFile.absolutePath)
     dockerfile.convention(project.layout.projectDirectory.file(DEFAULT_DOCKER_FILE).asFile.absolutePath)
     platform.convention(detectPlatform())
@@ -37,9 +42,8 @@ abstract class DockerBuildTask : DefaultTask() {
   }
 
   // -------------------------
-  // Build context & Dockerfile
+  // Properties
   // -------------------------
-
   @get:Input
   @get:Option(option = "path", description = "Docker build context directory")
   @get:Optional
@@ -50,54 +54,38 @@ abstract class DockerBuildTask : DefaultTask() {
   @get:Optional
   abstract val dockerfile: Property<String>
 
-  // -------------------------
-  // Tags
-  // -------------------------
-
   @get:Input
   @get:Option(option = "tag", description = "A single image tag")
   @get:Optional
   abstract val tag: Property<String>
 
   @get:Input
-  @get:Option(option = "tags", description = "Multiple image tags (comma-separated or repeated flags)")
+  @get:Option(option = "tags", description = "Multiple image tags")
   @get:Optional
   abstract val tags: ListProperty<String>
 
-  // -------------------------
-  // Platform
-  // -------------------------
-
   @get:Input
-  @get:Option(option = "platform", description = "Target platform such as linux/amd64")
+  @get:Option(option = "platform", description = "Target platform")
   @get:Optional
   abstract val platform: Property<Platform>
 
-  // -------------------------
-  // Build Args / Labels / Cache
-  // -------------------------
-
   @get:Input
-  @get:Option(option = "build-arg", description = "Build args: key=value (repeatable)")
+  @get:Option(option = "build-arg", description = "Build args")
   @get:Optional
   abstract val buildArgs: MapProperty<String, String>
 
   @get:Input
-  @get:Option(option = "label", description = "Image label: key=value (repeatable)")
+  @get:Option(option = "label", description = "Labels")
   @get:Optional
   abstract val labels: MapProperty<String, String>
 
   @get:Input
-  @get:Option(option = "cache-from", description = "Cache from: comma-separated list")
+  @get:Option(option = "cache-from", description = "Cache from")
   @get:Optional
   abstract val cacheFrom: ListProperty<String>
 
-  // -------------------------
-  // Flags
-  // -------------------------
-
   @get:Input
-  @get:Option(option = "no-cache", description = "Disable docker cache")
+  @get:Option(option = "no-cache", description = "Disable cache")
   @get:Optional
   abstract val noCache: Property<Boolean>
 
@@ -112,75 +100,89 @@ abstract class DockerBuildTask : DefaultTask() {
   abstract val target: Property<String>
 
   @get:Input
-  @get:Option(option = "printInspectAfterBuild", description = "print inspect infomation after docker build")
+  @get:Option(option = "printInspectAfterBuild", description = "Print inspect info after build")
   @get:Optional
   abstract val printInspectAfterBuild: Property<Boolean>
 
-  // -------------------------
-  // Dockerfile DSL
-  // -------------------------
   @get:Input
   @get:Optional
   abstract val dockerfileDsl: Property<DockerfileBuilder.() -> Unit>
 
-  // -------------------------
-  // Remote Dockerfile Template
-  // -------------------------
   @get:Input
   @get:Optional
-  abstract val remoteDockerfileTemplate: Property<String> // URL 或本地路径
+  abstract val remoteDockerfileTemplate: Property<String>
 
   @get:Input
   @get:Optional
   abstract val templateVars: MapProperty<String, Any>
 
   // -------------------------
-  // Build Logic
+  // TaskAction
   // -------------------------
-
   @TaskAction
   fun buildAction() {
-    logger.lifecycle("Starting Docker build...")
-
-    // 1️⃣ Build context 和 Dockerfile
     val contextDir = buildContext.orNull ?: project.projectDir.absolutePath
-    val dockerfilePath = dockerfile.orNull ?: "${contextDir}/Dockerfile"
+    val dockerfilePath = dockerfile.orNull ?: "$contextDir/Dockerfile"
 
-    // 2️⃣ 收集 tags
     val tagList = tags.orNull?.takeIf { it.isNotEmpty() }
       ?: tag.orNull?.let { listOf(it) }
-      ?: listOf("latest") // 默认 tag
+      ?: listOf("latest")
 
     val dockerConfig = project.extensions.getByType(DockerExtension::class.java)
 
-    // 3️⃣ 构建 DockerBuildCommand 对象
+    // 检测本机平台
+    val localPlatform = detectPlatform()
+
+    // 自动启用 buildx，如果指定 platform 和本机 platform 不同
+    val userPlatform = platform.orNull
+    val useBuildx = userPlatform != null && userPlatform != localPlatform
+
     val buildCommand = DockerBuildCommand(
       logger = logger,
       contextDir = contextDir,
       dockerfile = dockerfilePath,
       tags = tagList,
-      platform = platform.orNull,
+      platform = userPlatform,
       buildArgs = buildArgs.orNull ?: emptyMap(),
       labels = labels.orNull ?: emptyMap(),
       cacheFrom = cacheFrom.orNull ?: emptyList(),
       noCache = noCache.orNull ?: false,
       pull = pull.orNull ?: false,
       target = target.orNull,
-      printInspect = printInspectAfterBuild.orNull ?: false
+      printInspect = printInspectAfterBuild.orNull ?: false,
+      useBuildx = useBuildx
     ).also {
       it.dockerPath = dockerConfig.dockerPath.get()
     }
 
-    // 4️⃣ 执行 build
-    buildCommand.execute()
+    // 使用 StyledTextOutput 美化输出
+    val styledOut = outputFactory.create("docker-build")
+    styledOut.withStyle(StyledTextOutput.Style.Identifier)
+      .println("🛠️  Building Docker image(s): ${tagList.joinToString(", ")}")
+    if (useBuildx) {
+      styledOut.withStyle(StyledTextOutput.Style.Info)
+        .println("⚡ Platform ${userPlatform.value} differs from local ${localPlatform.value}, enabling Buildx")
+    }
 
-    logger.lifecycle("Docker build finished for tags: ${tagList.joinToString(", ")}")
+    val output = buildCommand.execute()
+    output.forEach { line ->
+      val style = when {
+        line.contains("WARNING", ignoreCase = true) -> StyledTextOutput.Style.Failure
+        line.contains("error", ignoreCase = true) -> StyledTextOutput.Style.Failure
+        line.startsWith("Step ") -> StyledTextOutput.Style.Info
+        line.startsWith(" --->") -> StyledTextOutput.Style.Success
+        else -> StyledTextOutput.Style.Normal
+      }
+      styledOut.withStyle(style).println(line)
+    }
+
+    styledOut.withStyle(StyledTextOutput.Style.Success)
+      .println("✅ Docker build finished for tags: ${tagList.joinToString(", ")}")
   }
 
   private fun detectPlatform(): Platform {
     val os = System.getProperty("os.name").lowercase()
     val arch = System.getProperty("os.arch").lowercase()
-
     return when {
       os.contains("linux") && arch.contains("amd64") -> Platform.LINUX_AMD64
       os.contains("linux") && arch.contains("aarch64") -> Platform.LINUX_ARM64
@@ -188,8 +190,7 @@ abstract class DockerBuildTask : DefaultTask() {
       os.contains("mac") && arch.contains("x86_64") -> Platform.LINUX_AMD64
       os.contains("mac") && arch.contains("aarch64") -> Platform.LINUX_ARM64
       os.contains("windows") && arch.contains("amd64") -> Platform.LINUX_AMD64
-      else -> Platform.LINUX_AMD64 // 默认 fallback
+      else -> Platform.LINUX_AMD64
     }
   }
 }
-
