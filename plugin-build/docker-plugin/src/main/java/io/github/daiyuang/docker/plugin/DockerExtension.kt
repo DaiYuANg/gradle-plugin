@@ -12,14 +12,4 @@ abstract class DockerExtension @Inject constructor(project: Project) {
 
   private val objects = project.objects
 
-  val dockerHost: Property<String> = objects.property(String::class.java)
-  val apiVersion: Property<String> = objects.property(String::class.java)
-
-  val dockerTlsVerify: Property<Boolean> = objects.property(Boolean::class.java)
-  val dockerCertPath: Property<String> = objects.property(String::class.java)
-
-  val registryUrl: Property<String> = objects.property(String::class.java)
-  val registryUsername: Property<String> = objects.property(String::class.java)
-  val registryPassword: Property<String> = objects.property(String::class.java)
-  val registryEmail: Property<String> = objects.property(String::class.java)
 }

@@ -12,9 +12,6 @@ tasks.dockerBuild {
 }
 
 dockerConfig{
-  registryUrl = "https://registry.hub.docker.com"
-  registryUsername = "daiyuang"
-  registryPassword = "password"
 }
 
 println(project.version)

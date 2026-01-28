@@ -1,13 +1,10 @@
 package io.github.daiyuang.docker.plugin.task
 
-import com.github.dockerjava.api.command.CreateContainerCmd
-import com.github.dockerjava.api.model.*
-import io.github.daiyuang.docker.plugin.service.DockerService
+import io.github.daiyuang.docker.plugin.command.DockerRunCommand
 import org.gradle.api.DefaultTask
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
-import org.gradle.api.services.ServiceReference
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.TaskAction
@@ -35,9 +32,6 @@ abstract class DockerRunTask : DefaultTask() {
     network.convention("bridge")
     pullIfMissing.convention(true)
   }
-
-  @get:ServiceReference(DockerService.Companion.SERVICE_NAME)
-  abstract val dockerService: Property<DockerService>
 
   // -------------------------
   // Basic
@@ -147,106 +141,19 @@ abstract class DockerRunTask : DefaultTask() {
   @TaskAction
   fun runAction() {
     logger.lifecycle("Starting docker run...")
+    // 构建 DockerRunCommand 对象
+    val dockerCommand = DockerRunCommand(
+      logger = logger,
+      image = image.get(),
+      name = containerName.orNull,
+      rm = autoRemove.orNull ?: false,
+      detach = detach.orNull ?: false,
+      volumes = volumes.orNull ?: emptyList(),
+      ports = ports.orNull ?: emptyList(),
+      extraArgs = emptyList() // 如果你有额外参数可以填
+    )
 
-    val client = dockerService.get().client()
-
-    val imageName = image.orNull ?: throw IllegalArgumentException("image must be provided")
-    if (pullIfMissing.orNull == true) {
-      logger.lifecycle("Pulling image $imageName...")
-      client.pullImageCmd(imageName).start().awaitCompletion()
-    }
-
-    // Parse port bindings
-    val portBindings = parsePorts(ports.get())
-    val exposedPorts = portBindings.map { it.exposedPort }
-
-    // Parse volumes
-    val volumeList = volumes.get().map { Volume(it) }.toList()
-
-    // Parse binds
-    val bindList = binds.get().map { parseBind(it) }.toList()
-
-    // Restart policy
-    val restartPolicy = parseRestartPolicy(restart.orNull)
-
-    // Create container
-    val cmd: CreateContainerCmd = client.createContainerCmd(imageName)
-      .withName(containerName.orNull)
-      .withEnv(env.get().map { "${it.key}=${it.value}" })
-      .withHostConfig(
-        HostConfig()
-          .withAutoRemove(autoRemove.get())
-          .withBinds(bindList)
-          .withPortBindings(*portBindings.toTypedArray())
-          .withNetworkMode(network.get())
-          .withRestartPolicy(restartPolicy)
-      )
-      .withExposedPorts(exposedPorts)
-      .withVolumes(volumeList)
-
-    workdir.orNull?.let { cmd.withWorkingDir(it) }
-    if (commands.get().isNotEmpty()) cmd.withCmd(commands.get())
-    if (labels.get().isNotEmpty()) cmd.withLabels(labels.get())
-
-    val containerId = cmd.exec().id
-
-    logger.lifecycle("Container created: $containerId")
-
-    // Start
-    client.startContainerCmd(containerId).exec()
-
-    logger.lifecycle("Container started: $containerId")
-  }
-
-  // -------------------------
-  // Helpers
-  // -------------------------
-
-  private fun parsePorts(portDefs: List<String>): List<PortBinding> {
-    return portDefs.map { def ->
-      val parts = def.split(":")
-      when (parts.size) {
-        2 -> {
-          // HOST:CONTAINER
-          PortBinding(
-            Ports.Binding.bindPort(parts[0].toInt()),
-            ExposedPort.tcp(parts[1].toInt())
-          )
-        }
-
-        3 -> {
-          // HOST_IP:HOST:CONTAINER
-          PortBinding(
-            Ports.Binding.bindIpAndPort(parts[0], parts[1].toInt()),
-            ExposedPort.tcp(parts[2].toInt())
-          )
-        }
-
-        else -> throw IllegalArgumentException("Invalid port format: $def")
-      }
-    }
-  }
-
-  private fun parseBind(text: String): Bind {
-    val parts = text.split(":")
-    return when (parts.size) {
-      2 -> Bind(parts[0], Volume(parts[1]))
-      3 -> {
-        val mode = if (parts[2].equals("ro", true)) AccessMode.ro else AccessMode.rw
-        Bind(parts[0], Volume(parts[1]), mode)
-      }
-
-      else -> throw IllegalArgumentException("Invalid bind format: $text")
-    }
-  }
-
-  private fun parseRestartPolicy(value: String?): RestartPolicy {
-    return when (value?.lowercase()) {
-      null, "", "no" -> RestartPolicy.noRestart()
-      "always" -> RestartPolicy.alwaysRestart()
-      "unless-stopped" -> RestartPolicy.unlessStoppedRestart()
-      "on-failure" -> RestartPolicy.onFailureRestart(0)
-      else -> throw IllegalArgumentException("Invalid restart policy: $value")
-    }
+    // 执行
+    dockerCommand.execute()
   }
 }

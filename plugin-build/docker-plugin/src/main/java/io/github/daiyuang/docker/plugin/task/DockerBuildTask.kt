@@ -1,32 +1,15 @@
 package io.github.daiyuang.docker.plugin.task
 
-import io.github.daiyuang.docker.plugin.func.toPrettyJson
-import com.github.dockerjava.api.model.AuthConfigurations
-import freemarker.template.Configuration
-import freemarker.template.Configuration.VERSION_2_3_34
-import freemarker.template.Template
-import freemarker.template.TemplateExceptionHandler
-import freemarker.template.TemplateExceptionHandler.RETHROW_HANDLER
+import io.github.daiyuang.docker.plugin.command.DockerBuildCommand
 import io.github.daiyuang.docker.plugin.dsl.DockerfileBuilder
-import io.github.daiyuang.docker.plugin.dsl.dockerfile
-import io.github.daiyuang.docker.plugin.service.DockerService
-import org.apache.commons.lang3.SystemUtils
 import org.gradle.api.DefaultTask
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
-import org.gradle.api.services.ServiceReference
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.options.Option
-import oshi.SystemInfo
-import java.io.File
-import java.io.StringReader
-import java.io.StringWriter
-import java.net.URI
-import java.nio.charset.StandardCharsets
-import java.nio.file.Files
 
 abstract class DockerBuildTask : DefaultTask() {
 
@@ -41,19 +24,19 @@ abstract class DockerBuildTask : DefaultTask() {
     // Default values
     buildContext.convention(project.layout.projectDirectory.asFile.absolutePath)
     dockerfile.convention(project.layout.projectDirectory.file(DEFAULT_DOCKER_FILE).asFile.absolutePath)
-    platform.convention(detectPlatform())
+//    platform.convention(detectPlatform())
     noCache.convention(false)
     pull.convention(false)
     labels.convention(mapOf())
     buildArgs.convention(mapOf())
     cacheFrom.convention(listOf())
     printInspectAfterBuild.convention(false)
-    authConfigs.convention(AuthConfigurations())
+//    authConfigs.convention(AuthConfigurations())
     templateVars.convention(mapOf())
   }
 
-  @get:ServiceReference(DockerService.SERVICE_NAME)
-  abstract val dockerService: Property<DockerService>
+//  @get:ServiceReference(DockerService.SERVICE_NAME)
+//  abstract val dockerService: Property<DockerService>
 
   // -------------------------
   // Build context & Dockerfile
@@ -136,14 +119,6 @@ abstract class DockerBuildTask : DefaultTask() {
   abstract val printInspectAfterBuild: Property<Boolean>
 
   // -------------------------
-  // Auth
-  // -------------------------
-
-  @get:Input
-  @get:Optional
-  abstract val authConfigs: Property<AuthConfigurations>
-
-  // -------------------------
   // Dockerfile DSL
   // -------------------------
   @get:Input
@@ -169,168 +144,35 @@ abstract class DockerBuildTask : DefaultTask() {
   fun buildAction() {
     logger.lifecycle("Starting Docker build...")
 
-    val client = dockerService.get().client()
+    // 1️⃣ Build context 和 Dockerfile
+    val contextDir = buildContext.orNull ?: project.projectDir.absolutePath
+    val dockerfilePath = dockerfile.orNull ?: "${contextDir}/Dockerfile"
 
-    val contextDir = File(buildContext.get())
-    // -------------------------
-    // Dockerfile 处理
-    // -------------------------
-    val dockerfilePath: File = when {
-      dockerfileDsl.orNull != null -> {
-        val tmp = Files.createTempFile("Dockerfile-", ".tmp").toFile()
-        val content = dockerfile {
-          dockerfileDsl.get().invoke(this)
-        }.build()
-        tmp.writeText(content)
-        logger.lifecycle("Generated Dockerfile (DSL):\n$content")
-        tmp
-      }
+    // 2️⃣ 收集 tags
+    val tagList = tags.orNull?.takeIf { it.isNotEmpty() }
+      ?: tag.orNull?.let { listOf(it) }
+      ?: listOf("latest") // 默认 tag
 
-      remoteDockerfileTemplate.orNull != null -> {
-        val tmp = File(project.layout.buildDirectory.asFile.get(), "docker/Dockerfile-remote.tmp")
-        tmp.parentFile.mkdirs()
-        val templateContent = if (remoteDockerfileTemplate.get().startsWith("http")) {
-          URI(remoteDockerfileTemplate.get()).toURL().readText()
-        } else {
-          File(remoteDockerfileTemplate.get()).readText()
-        }
+    // 3️⃣ 构建 DockerBuildCommand 对象
+    val buildCommand = DockerBuildCommand(
+      logger = logger,
+      contextDir = contextDir,
+      dockerfile = dockerfilePath,
+      tags = tagList,
+      platform = platform.orNull,
+      buildArgs = buildArgs.orNull ?: emptyMap(),
+      labels = labels.orNull ?: emptyMap(),
+      cacheFrom = cacheFrom.orNull ?: emptyList(),
+      noCache = noCache.orNull ?: false,
+      pull = pull.orNull ?: false,
+      target = target.orNull,
+      printInspect = printInspectAfterBuild.orNull ?: false
+    )
 
-        val cfg = Configuration(VERSION_2_3_34).apply {
-          defaultEncoding = StandardCharsets.UTF_8.name()
-          templateExceptionHandler = RETHROW_HANDLER
-          logTemplateExceptions = false
-          wrapUncheckedExceptions = true
-        }
+    // 4️⃣ 执行 build
+    buildCommand.execute()
 
-        val template = Template("dockerfile", StringReader(templateContent), cfg)
-        val writer = StringWriter()
-        template.process(templateVars.get(), writer)
-        tmp.writeText(writer.toString())
-        logger.lifecycle("Generated Dockerfile (Freemarker):\n${writer}")
-        tmp
-      }
-
-      else -> File(dockerfile.get())
-    }
-
-
-    val allTags = resolveTags()
-
-    logger.lifecycle("")
-    logger.lifecycle("Docker Build Config:")
-    logger.lifecycle("  context     = $contextDir")
-    logger.lifecycle("  dockerfile  = $dockerfilePath")
-    logger.lifecycle("  tags        = $allTags")
-    logger.lifecycle("  platform    = ${platform.orNull}")
-    logger.lifecycle("  noCache     = ${noCache.get()}")
-    logger.lifecycle("  pull        = ${pull.get()}")
-    logger.lifecycle("  buildArgs   = ${buildArgs.get()}")
-    logger.lifecycle("  labels      = ${labels.get()}")
-    logger.lifecycle("  cacheFrom   = ${cacheFrom.get()}")
-    logger.lifecycle("")
-
-    client.buildImageCmd().withBuildAuthConfigs(AuthConfigurations())
-    // Build command
-    val cmd = client.buildImageCmd()
-      .withBaseDirectory(contextDir)
-      .withDockerfile(dockerfilePath)
-      .withTags(allTags)
-
-    platform.orNull?.let { cmd.withPlatform(it) }
-    target.orNull?.let { cmd.withTarget(it) }
-
-    // flags
-    cmd.withNoCache(noCache.get())
-    cmd.withPull(pull.get())
-
-    // build args
-    if (buildArgs.get().isNotEmpty()) {
-      buildArgs.get().forEach { (k, v) ->
-        cmd.withBuildArg(k, v)
-      }
-    }
-
-    // labels
-    if (labels.get().isNotEmpty()) {
-      cmd.withLabels(labels.get())
-    }
-
-    // cache-from
-    if (cacheFrom.get().isNotEmpty()) {
-      cmd.withCacheFrom(cacheFrom.get().toSet())
-    }
-
-    // Run build
-    val imageId = cmd.start().awaitImageId()
-
-    logger.lifecycle("Docker build completed successfully. ImageId = $imageId")
-
-    if (printInspectAfterBuild.get()) {
-      val inspectResult = client.inspectImageCmd(imageId).exec()
-      logger.lifecycle("Image Inspect ${inspectResult.toPrettyJson()}")
-    }
-  }
-
-  // ---------------------------------------
-  // Helpers
-  // ---------------------------------------
-
-  private fun resolveTags(): Set<String> {
-    val result = mutableSetOf<String>()
-
-    val hasExplicitTag =
-      tag.isPresent || (tags.isPresent && tags.get().isNotEmpty())
-
-    if (tag.isPresent) {
-      result.add(tag.get())
-    }
-
-    if (tags.isPresent) {
-      result.addAll(
-        tags.get()
-          .flatMap { it.split(",") }
-          .map { it.trim() }
-          .filter { it.isNotBlank() }
-      )
-    }
-
-    // 只有在完全未指定 tag / tags 时，才使用默认 tag
-    if (!hasExplicitTag) {
-      result.add(defaultTag(project.name))
-    }
-
-    return result
-  }
-
-
-  private fun defaultTag(projectName: String): String {
-    val normalized = projectName.replaceFirst("-", "/")
-    return "$normalized:latest"
-  }
-
-  private fun detectPlatform(): String {
-    val si = SystemInfo()
-    val cpu = si.hardware.processor
-    val id = cpu.processorIdentifier
-
-    val arch = id.microarchitecture.lowercase()  // OSHI 7 推荐字段
-    val rawArch = SystemUtils.OS_ARCH  // JVM 补充
-
-    return when {
-      // ARM 64-bit
-      arch.contains("aarch64") || arch.contains("armv8") ||
-        rawArch.contains("aarch64") || rawArch.contains("arm64") ->
-        "linux/arm64"
-
-      // x86_64
-      arch.contains("x86") || rawArch.contains("x86_64") || rawArch.contains("amd64") ->
-        "linux/amd64"
-
-      // ARM 32-bit
-      arch.contains("arm") || rawArch.contains("arm") ->
-        "linux/arm/v7"
-
-      else -> "linux/amd64"
-    }
+    logger.lifecycle("Docker build finished for tags: ${tagList.joinToString(", ")}")
   }
 }
+

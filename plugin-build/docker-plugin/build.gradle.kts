@@ -9,12 +9,6 @@ plugins {
 dependencies {
   implementation(kotlin("stdlib"))
   implementation(gradleApi())
-  implementation(libs.docker.java.core)
-  implementation(libs.docker.java.transport.httpclient5)
-  implementation(libs.apache.common.lang3)
-  implementation(libs.jackson.core)
-  implementation(libs.freemarker)
-  implementation(libs.oshi)
   testImplementation(libs.junit)
 }
 
