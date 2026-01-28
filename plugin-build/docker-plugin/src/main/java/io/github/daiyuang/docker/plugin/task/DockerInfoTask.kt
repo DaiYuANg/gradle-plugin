@@ -1,5 +1,6 @@
 package io.github.daiyuang.docker.plugin.task
 
+import io.github.daiyuang.docker.plugin.DockerExtension
 import io.github.daiyuang.docker.plugin.command.DockerCommand
 import io.github.daiyuang.docker.plugin.command.DockerInfoCommand
 import org.gradle.api.DefaultTask
@@ -12,12 +13,11 @@ abstract class DockerInfoTask : DefaultTask() {
 
   @TaskAction
   fun printInfo() {
-    DockerInfoCommand(logger).execute()
-//    val client = dockerService.get().client()
-
-//    val info = client.infoCmd().exec()
-//    println("Docker info$info")
-//    val version = client.versionCmd().exec()
-//    println("Docker Version: ${version.version}")
+    val dockerConfig = project.extensions.getByType(DockerExtension::class.java)
+    DockerInfoCommand(logger)
+      .also {
+        it.dockerPath = dockerConfig.dockerPath.get()
+      }
+      .execute()
   }
 }

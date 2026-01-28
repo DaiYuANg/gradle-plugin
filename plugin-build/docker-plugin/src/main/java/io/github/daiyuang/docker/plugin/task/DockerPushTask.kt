@@ -1,5 +1,6 @@
 package io.github.daiyuang.docker.plugin.task
 
+import io.github.daiyuang.docker.plugin.DockerExtension
 import io.github.daiyuang.docker.plugin.command.DockerPushCommand
 import org.gradle.api.DefaultTask
 import org.gradle.api.provider.ListProperty
@@ -37,11 +38,15 @@ abstract class DockerPushTask : DefaultTask() {
     val img = image.orNull ?: throw IllegalArgumentException("Property 'image' must be set")
     val tagList = tags.orNull?.takeIf { it.isNotEmpty() } ?: listOf(img)
 
+    val dockerConfig = project.extensions.getByType(DockerExtension::class.java)
     // 创建 CompletableFuture 列表
     val futures = tagList.map { tag ->
       CompletableFuture.runAsync {
         logger.lifecycle("Pushing Docker image: $tag")
         val pushCommand = DockerPushCommand(logger, tag)
+          .also {
+            it.dockerPath = dockerConfig.dockerPath.get()
+          }
         pushCommand.execute()
       }
     }

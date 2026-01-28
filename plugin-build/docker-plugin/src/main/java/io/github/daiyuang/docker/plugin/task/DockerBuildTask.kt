@@ -1,6 +1,8 @@
 package io.github.daiyuang.docker.plugin.task
 
+import io.github.daiyuang.docker.plugin.DockerExtension
 import io.github.daiyuang.docker.plugin.command.DockerBuildCommand
+import io.github.daiyuang.docker.plugin.constant.Platform
 import io.github.daiyuang.docker.plugin.dsl.DockerfileBuilder
 import org.gradle.api.DefaultTask
 import org.gradle.api.provider.ListProperty
@@ -24,19 +26,15 @@ abstract class DockerBuildTask : DefaultTask() {
     // Default values
     buildContext.convention(project.layout.projectDirectory.asFile.absolutePath)
     dockerfile.convention(project.layout.projectDirectory.file(DEFAULT_DOCKER_FILE).asFile.absolutePath)
-//    platform.convention(detectPlatform())
+    platform.convention(detectPlatform())
     noCache.convention(false)
     pull.convention(false)
     labels.convention(mapOf())
     buildArgs.convention(mapOf())
     cacheFrom.convention(listOf())
     printInspectAfterBuild.convention(false)
-//    authConfigs.convention(AuthConfigurations())
     templateVars.convention(mapOf())
   }
-
-//  @get:ServiceReference(DockerService.SERVICE_NAME)
-//  abstract val dockerService: Property<DockerService>
 
   // -------------------------
   // Build context & Dockerfile
@@ -73,7 +71,7 @@ abstract class DockerBuildTask : DefaultTask() {
   @get:Input
   @get:Option(option = "platform", description = "Target platform such as linux/amd64")
   @get:Optional
-  abstract val platform: Property<String>
+  abstract val platform: Property<Platform>
 
   // -------------------------
   // Build Args / Labels / Cache
@@ -153,6 +151,8 @@ abstract class DockerBuildTask : DefaultTask() {
       ?: tag.orNull?.let { listOf(it) }
       ?: listOf("latest") // 默认 tag
 
+    val dockerConfig = project.extensions.getByType(DockerExtension::class.java)
+
     // 3️⃣ 构建 DockerBuildCommand 对象
     val buildCommand = DockerBuildCommand(
       logger = logger,
@@ -167,12 +167,29 @@ abstract class DockerBuildTask : DefaultTask() {
       pull = pull.orNull ?: false,
       target = target.orNull,
       printInspect = printInspectAfterBuild.orNull ?: false
-    )
+    ).also {
+      it.dockerPath = dockerConfig.dockerPath.get()
+    }
 
     // 4️⃣ 执行 build
     buildCommand.execute()
 
     logger.lifecycle("Docker build finished for tags: ${tagList.joinToString(", ")}")
+  }
+
+  private fun detectPlatform(): Platform {
+    val os = System.getProperty("os.name").lowercase()
+    val arch = System.getProperty("os.arch").lowercase()
+
+    return when {
+      os.contains("linux") && arch.contains("amd64") -> Platform.LINUX_AMD64
+      os.contains("linux") && arch.contains("aarch64") -> Platform.LINUX_ARM64
+      os.contains("linux") && arch.startsWith("arm") -> Platform.LINUX_ARM_V7
+      os.contains("mac") && arch.contains("x86_64") -> Platform.LINUX_AMD64
+      os.contains("mac") && arch.contains("aarch64") -> Platform.LINUX_ARM64
+      os.contains("windows") && arch.contains("amd64") -> Platform.LINUX_AMD64
+      else -> Platform.LINUX_AMD64 // 默认 fallback
+    }
   }
 }
 

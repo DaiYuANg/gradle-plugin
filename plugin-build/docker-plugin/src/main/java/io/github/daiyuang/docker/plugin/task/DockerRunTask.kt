@@ -1,5 +1,6 @@
 package io.github.daiyuang.docker.plugin.task
 
+import io.github.daiyuang.docker.plugin.DockerExtension
 import io.github.daiyuang.docker.plugin.command.DockerRunCommand
 import org.gradle.api.DefaultTask
 import org.gradle.api.provider.ListProperty
@@ -141,6 +142,7 @@ abstract class DockerRunTask : DefaultTask() {
   @TaskAction
   fun runAction() {
     logger.lifecycle("Starting docker run...")
+    val dockerConfig = project.extensions.getByType(DockerExtension::class.java)
     // 构建 DockerRunCommand 对象
     val dockerCommand = DockerRunCommand(
       logger = logger,
@@ -152,6 +154,9 @@ abstract class DockerRunTask : DefaultTask() {
       ports = ports.orNull ?: emptyList(),
       extraArgs = emptyList() // 如果你有额外参数可以填
     )
+      .also {
+        it.dockerPath = dockerConfig.dockerPath.get()
+      }
 
     // 执行
     dockerCommand.execute()
