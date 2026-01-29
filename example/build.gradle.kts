@@ -20,7 +20,7 @@ tasks.dockerRun {
 }
 
 tasks.dockerPush{
-  image = "example:latest"
+//  image = "example:latest"
 }
 
 git {
