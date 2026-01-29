@@ -9,7 +9,12 @@ class DockerBuildCommand(
   logger: Logger,
   private val contextDir: String,
   private val dockerfile: String,
-  private val tags: List<String> = emptyList(),
+
+  // 👇 核心三件套
+  private val registries: List<String>,
+  private val imageName: String,
+  private val tags: List<String>,
+
   private val platform: Platform? = null,
   private val buildArgs: Map<String, String> = emptyMap(),
   private val labels: Map<String, String> = emptyMap(),
@@ -34,7 +39,6 @@ class DockerBuildCommand(
     if (noCache) args += "--no-cache"
     if (pull) args += "--pull"
 
-    // Buildx 多平台逻辑
     when {
       multiPlatforms.isNotEmpty() -> {
         args += "--platform"
@@ -50,11 +54,13 @@ class DockerBuildCommand(
     buildArgs.forEach { (k, v) -> args += listOf("--build-arg", "$k=$v") }
     labels.forEach { (k, v) -> args += listOf("--label", "$k=$v") }
     cacheFrom.forEach { args += listOf("--cache-from", it) }
-    tags.forEach { args += listOf("-t", it) }
+
+    fullImageTags().forEach { args += listOf("-t", it) }
 
     args += listOf("-f", dockerfile, contextDir)
     return args
   }
+
 
   /**
    * 执行 Docker build 并返回输出
@@ -84,7 +90,7 @@ class DockerBuildCommand(
 
     // printInspect 逻辑也返回输出而不打印
     if (printInspect) {
-      tags.forEach { tag ->
+      fullImageTags().forEach { tag ->
         val inspectArgs = listOf(dockerPath, "image", "inspect", tag)
         val inspectProcess = ProcessBuilder(inspectArgs)
           .redirectErrorStream(true)
@@ -106,4 +112,25 @@ class DockerBuildCommand(
 
     return output
   }
+
+  private fun fullImageTags(): List<String> {
+    require(!imageName.contains(":")) {
+      "imageName must not contain ':'"
+    }
+
+    val registryList =
+      if (registries.isEmpty()) listOf("docker.io")
+      else registries.filter { it.isNotBlank() }
+
+    val tagList =
+      tags.ifEmpty { listOf("latest") }
+
+    return registryList.flatMap { registry ->
+      val prefix = if (registry.isBlank()) "" else "$registry/"
+      tagList.map { tag ->
+        "$prefix$imageName:$tag"
+      }
+    }
+  }
+
 }

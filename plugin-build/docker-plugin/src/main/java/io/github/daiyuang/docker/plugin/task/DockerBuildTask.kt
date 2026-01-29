@@ -28,7 +28,7 @@ abstract class DockerBuildTask
 
   init {
     description = "Build Docker images using docker-java"
-
+    imageName.convention(project.name)
     buildContext.convention(project.layout.projectDirectory.asFile.absolutePath)
     dockerfile.convention(project.layout.projectDirectory.file(DEFAULT_DOCKER_FILE).asFile.absolutePath)
     platform.convention(detectPlatform())
@@ -55,14 +55,22 @@ abstract class DockerBuildTask
   abstract val dockerfile: Property<String>
 
   @get:Input
-  @get:Option(option = "tag", description = "A single image tag")
-  @get:Optional
-  abstract val tag: Property<String>
-
-  @get:Input
-  @get:Option(option = "tags", description = "Multiple image tags")
+  @get:Option(option = "tags", description = "Image tags")
   @get:Optional
   abstract val tags: ListProperty<String>
+
+  @get:Input
+  @get:Option(option = "image", description = "Docker image name, e.g. repo/name")
+  @get:Optional
+  abstract val imageName: Property<String>
+
+  @get:Input
+  @get:Option(
+    option = "registries",
+    description = "Docker registries, e.g. docker.io,ghcr.io"
+  )
+  @get:Optional
+  abstract val registries: ListProperty<String>
 
   @get:Input
   @get:Option(option = "platform", description = "Target platform")
@@ -125,7 +133,7 @@ abstract class DockerBuildTask
     val dockerfilePath = dockerfile.orNull ?: "$contextDir/Dockerfile"
 
     val tagList = tags.orNull?.takeIf { it.isNotEmpty() }
-      ?: tag.orNull?.let { listOf(it) }
+      ?: tags.orNull?.let { listOf(it) }
       ?: listOf("latest")
 
     val dockerConfig = project.extensions.getByType(DockerExtension::class.java)
@@ -141,7 +149,11 @@ abstract class DockerBuildTask
       logger = logger,
       contextDir = contextDir,
       dockerfile = dockerfilePath,
-      tags = tagList,
+
+      registries = registries.get(),
+      imageName = imageName.get(),
+      tags = tags.get(),
+
       platform = userPlatform,
       buildArgs = buildArgs.orNull ?: emptyMap(),
       labels = labels.orNull ?: emptyMap(),
